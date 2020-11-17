@@ -34,3 +34,62 @@ def ccf2acf(ccf):
     acf = np.array(acf) / np.mean(acf, axis=0)
 
     return acf.T
+
+def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
+    """
+    Calculate the singular value decomposition of the ACF and project the
+    measured radial velocities onto the first k principal components.
+
+    Args:
+        ccf (array, Nobs x Nrv) Cross-correlation function for each observation
+        rv (array, Nobs) Measured radial velocities
+        rverr (array, Nobs) Radial velocity uncertainties
+        k (int) Number of basis vectors to project onto
+        ivw (bool) Subtract inverse-variance weighted average?
+        return_usp (bool) Return the output from SVD decomposition of the ACF
+    Returns:
+        v_obs, v_shape, v_shift (arrays, Nobs)
+            Observed RVs (minus average), shape-driven RVs, shift-driven RVs
+        (u, s, p) (tuple of arrays)
+            Output from SVD decomposition of the ACF, if `return_usp` is True
+
+    References:
+        [1] Collier Cameron et al. (2020) arxiv:2011.00018
+    """
+    if ivw:
+        # subtract inverse-variance weighted average
+        invvar = 1 / rverr**2
+        v_obs = rv - np.average(rv, weights=invvar)
+    else:
+        v_obs = rv - rv.mean()
+
+    # calculate ACF
+    acf = ccf2acf(ccf)
+    # SVD decomposition (eq. 5 [1])
+    u, s, p = np.linalg.svd(acf, full_matrices=False)
+    # U_A, shape (Nobs x Nobs)
+    # S_A, shape (Nobs x 1)
+    # P_A, shape (Nobs x Nrv)
+
+    # vector of response factors (eq. 6 [1])
+    alpha = np.dot(u.T, v_obs)
+
+    # sort the elements of alpha in order of descending absolute value
+    # (see section 3.3 [1])
+    ind = np.argsort(np.abs(alpha))[::-1]
+    u_sort = u[:, ind]
+    alpha_sort = alpha[ind]
+
+    # use only the first k basis vectors
+    u_sort = u_sort[:, :k]
+    alpha_sort = alpha_sort[:k]
+
+    # calculate v∥ (shape-driven)
+    v_shape = np.dot(u_sort, alpha_sort)
+    # calculate v⟂ (shift-driven)
+    v_shift = v_obs - v_shape
+
+    if return_usp:
+        return v_obs, v_shape, v_shift, (u, s, p)
+
+    return v_obs, v_shape, v_shift
