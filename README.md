@@ -10,5 +10,6 @@ An implementation of the algorithm proposed by [Collier Cameron et al. 2020](htt
 - [x] SVD decomposition of ACFs
 - [x] Project observed RVs onto k principal components
 - [x] Estimate optimal k using BIC
-- [ ] Model stellar variability and planetary motion simultaneously
+- [x] Model stellar variability and planetary motion simultaneously
+  - [ ] Calculate covariance matrix following appendix B
 

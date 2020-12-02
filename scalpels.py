@@ -1,3 +1,4 @@
+from math import tau
 import numpy as np
 from scipy.stats import norm as Gaussian
 
@@ -96,12 +97,12 @@ def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
 
 def BIC(k, v_shift, rverr):
     """
-    Calculate the Bayesian Information Criterium (BIC) for a SCALPELS model 
+    Calculate the Bayesian Information Criterium (BIC) for a SCALPELS model
     that includes k principal components.
 
     Args:
         k (int) Number of principal components used in the decomposition
-        v_shit (array, Nobs) Shift-driven RVs obtained from SCALPELS 
+        v_shit (array, Nobs) Shift-driven RVs obtained from SCALPELS
         rverr (array, Nobs) Radial velocity uncertainties
     Returns:
         BIC (float)
@@ -152,3 +153,79 @@ def best_k(ccf, rv, rverr, ivw=True, BIC_threshold=10):
             return k - 1
     # if we got here, something went wrong?
     raise ValueError('Estimate of k is too high?')
+
+def scalpels_planet(ccf, time, rv, rverr, k, period, ivw=True):
+    """
+    Calculate the singular value decomposition of the ACF and project the
+    measured radial velocities onto the first k principal components including
+    a simultaneous sinusoidal fit (see section 4.2 and appendix C2 in [1]).
+
+    Args:
+        ccf (array, Nobs x Nrv) Cross-correlation function for each observation
+        time (array, Nobs) Times at which radial velocities were observed
+        rv (array, Nobs) Measured radial velocities
+        rverr (array, Nobs) Radial velocity uncertainties
+        k (int) Number of basis vectors to project onto
+        period (float) Orbital period of the planet (circular orbit)
+        ivw (bool) Subtract inverse-variance weighted average?
+    Returns:
+        v_obs, v_shape, v_shift, v_orb (arrays, Nobs)
+            Observed RVs (minus average), shape-driven RVs, shift-driven RVs,
+            and orbital RVs.
+        θ (array, 2)
+            Best-fit planet coefficient pair (A1,B1)
+
+    References:
+        [1] Collier Cameron et al. (2020) arxiv:2011.00018
+    """
+    if ivw:
+        # subtract inverse-variance weighted average
+        invvar = 1 / rverr**2
+        v_obs = rv - np.average(rv, weights=invvar)
+    else:
+        v_obs = rv - rv.mean()
+
+    # calculate ACF
+    acf = ccf2acf(ccf)
+    # SVD decomposition (eq. 5 [1])
+    u, s, p = np.linalg.svd(acf, full_matrices=False)
+    # U_A, shape (Nobs x Nobs)
+    # S_A, shape (Nobs x 1)
+    # P_A, shape (Nobs x Nrv)
+
+    # vector of response factors (eq. 6 [1])
+    alpha = np.dot(u.T, v_obs)
+
+    # sort the elements of alpha in order of descending absolute value
+    # (see section 3.3 [1])
+    ind = np.argsort(np.abs(alpha))[::-1]
+    u_sort = u[:, ind]
+    alpha_sort = alpha[ind]
+
+    # use only the first k basis vectors
+    u_sort = u_sort[:, :k]
+    alpha_sort = alpha_sort[:k]
+
+    # up to here, it was just like scalpels
+
+    # compute F and concatenate it to U_A (see section 4.2 [1])
+    F = np.c_[np.cos(time * tau / period), np.sin(time * tau / period)]
+    A = np.c_[F, u_sort]
+
+    #! skipping steps iii - vii in appendix C2
+    Σinv = np.diag(1 / rverr**2)
+
+    # solve the least-squares problem (eq. 11 [1])
+    temp = np.dot(A.T, Σinv)
+    a = temp.dot(A)
+    b = temp.dot(v_obs)
+    θ = np.linalg.solve(a, b)
+
+    # calculate v∥ (shape-driven)
+    v_shape = np.dot(u_sort, θ[2:])
+    # calculate v_orb (planet)
+    v_orb = np.dot(θ[:2], F.T)
+    # calculate v⟂ (shift-driven)
+    v_shift = v_obs - v_shape
+
+    return v_obs, v_shape, v_shift, v_orb, θ[:2]
