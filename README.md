@@ -15,5 +15,5 @@ An implementation of the algorithm proposed by [Collier Cameron et al. 2020](htt
 
 
 All functions are in the `scalpels.py` file, documented _ad nauseum_ and following the notation of the paper.  
-Prepare the inputs and call `scalpels` with a fixed `k` (number of principal components) or `best_k` to estimate it.
+Prepare the inputs and call `scalpels` with a fixed `k` (number of principal components) or `best_k` to estimate it.  
 Call `scalpels_planet` with a fixed `k` to simultaneously fit a sinusoidal planet signal at a given orbital period.
