@@ -1,5 +1,5 @@
-
 import numpy as np
+from scipy.stats import norm as Gaussian
 
 def ccf2acf(ccf):
     """
@@ -93,3 +93,62 @@ def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
         return v_obs, v_shape, v_shift, (u, s, p)
 
     return v_obs, v_shape, v_shift
+
+def BIC(k, v_shift, rverr):
+    """
+    Calculate the Bayesian Information Criterium (BIC) for a SCALPELS model 
+    that includes k principal components.
+
+    Args:
+        k (int) Number of principal components used in the decomposition
+        v_shit (array, Nobs) Shift-driven RVs obtained from SCALPELS 
+        rverr (array, Nobs) Radial velocity uncertainties
+    Returns:
+        BIC (float)
+            The BIC value for the SCALPELS model with k principal components
+
+    References:
+        [1] Collier Cameron et al. (2020) arxiv:2011.00018
+    """
+    # the log-likelihood (using scipy.stats.norm for clarity)
+    logL = Gaussian(v_shift.mean(), rverr).logpdf(v_shift).sum()
+    # penalty for subtracting mean and adding k basis vectors
+    pen = (k + 1) * np.log(v_shift.size)
+    # return the BIC (see e.g. Wikipedia)
+    return -2 * logL + pen
+
+def best_k(ccf, rv, rverr, ivw=True, BIC_threshold=10):
+    """
+    Estimate the number of principal components to use for SCALPELS.
+
+    Args:
+        ccf (array, Nobs x Nrv) Cross-correlation function for each observation
+        rv (array, Nobs) Measured radial velocities
+        rverr (array, Nobs) Radial velocity uncertainties
+        ivw (bool) Subtract inverse-variance weighted average?
+        BIC_threshold (float) The theshold for a "significant" decrease in BIC
+    Returns:
+        k (int) "Optimal" number of principal components
+    Raises:
+        ValueError, if the best estimate of k is equal to the total number of
+        basis vectors
+
+    References:
+        [1] Collier Cameron et al. (2020) arxiv:2011.00018
+    """
+    n = ccf.shape[0]
+    best_bic = np.inf
+    # try all values of k
+    for k in range(n + 1):
+        # run SCALPELS
+        *_, shift = scalpels(ccf, rv, rverr, k, ivw=ivw)
+        # estimate BIC
+        bic = BIC(k, shift, rverr)
+        # if BIC improved by more than BIC_threshold, continue
+        if bic < best_bic and (best_bic - bic) > BIC_threshold:
+            best_bic = bic
+        # otherwise, return previous k
+        else:
+            return k - 1
+    # if we got here, something went wrong?
+    raise ValueError('Estimate of k is too high?')
