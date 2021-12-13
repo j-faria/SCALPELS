@@ -2,6 +2,7 @@ from math import tau
 import numpy as np
 from scipy.stats import norm as Gaussian
 
+
 def ccf2acf(ccf):
     """
     Compute the ACF of each CCF (eq. 3 in [1])
@@ -36,6 +37,7 @@ def ccf2acf(ccf):
 
     return acf.T
 
+
 def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
     """
     Calculate the singular value decomposition of the ACF and project the
@@ -44,7 +46,7 @@ def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
     Args:
         ccf (array, Nobs x Nrv) Cross-correlation function for each observation
         rv (array, Nobs) Measured radial velocities
-        rverr (array, Nobs) Radial velocity uncertainties
+        rverr (array, Nobs) Radial velocity uncertainties (used if ivw=True)
         k (int) Number of basis vectors to project onto
         ivw (bool) Subtract inverse-variance weighted average?
         return_usp (bool) Return the output from SVD decomposition of the ACF
@@ -95,15 +97,16 @@ def scalpels(ccf, rv, rverr, k, ivw=True, return_usp=False):
 
     return v_obs, v_shape, v_shift
 
-def BIC(k, v_shift, rverr):
+
+def BIC(k, v_shift, rverr=None):
     """
     Calculate the Bayesian Information Criterium (BIC) for a SCALPELS model
     that includes k principal components.
 
     Args:
         k (int) Number of principal components used in the decomposition
-        v_shit (array, Nobs) Shift-driven RVs obtained from SCALPELS
-        rverr (array, Nobs) Radial velocity uncertainties
+        v_shift (array, Nobs) Shift-driven RVs obtained from SCALPELS
+        rverr (array, Nobs, optional) Radial velocity uncertainties
     Returns:
         BIC (float)
             The BIC value for the SCALPELS model with k principal components
@@ -111,12 +114,15 @@ def BIC(k, v_shift, rverr):
     References:
         [1] Collier Cameron et al. (2020) arxiv:2011.00018
     """
+    if rverr is None:
+        rverr = np.ones_like(v_shift)
     # the log-likelihood (using scipy.stats.norm for clarity)
     logL = Gaussian(v_shift.mean(), rverr).logpdf(v_shift).sum()
     # penalty for subtracting mean and adding k basis vectors
     pen = (k + 1) * np.log(v_shift.size)
     # return the BIC (see e.g. Wikipedia)
     return -2 * logL + pen
+
 
 def best_k(ccf, rv, rverr, ivw=True, BIC_threshold=10):
     """
@@ -153,6 +159,7 @@ def best_k(ccf, rv, rverr, ivw=True, BIC_threshold=10):
             return k - 1
     # if we got here, something went wrong?
     raise ValueError('Estimate of k is too high?')
+
 
 def scalpels_planet(ccf, time, rv, rverr, k, period, ivw=True):
     """
